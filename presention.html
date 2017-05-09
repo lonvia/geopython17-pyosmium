@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Title</title>
+    <meta charset="utf-8">
+    <style>
+      @import url(https://fonts.googleapis.com/css?family=Yanone+Kaffeesatz);
+      @import url(https://fonts.googleapis.com/css?family=Droid+Serif:400,700,400italic);
+      @import url(https://fonts.googleapis.com/css?family=Ubuntu+Mono:400,700,400italic);
+
+      body { font-family: 'Droid Serif'; }
+      h1, h2, h3 {
+        font-family: 'Yanone Kaffeesatz';
+        font-weight: normal;
+      }
+      .remark-code, .remark-inline-code { font-family: 'Ubuntu Mono'; font-size: 1.1em }
+
+      .cols-three .colc { width: 33%; float: left; text-align: center}
+      .cols-three .col { width: 33%; float: left}
+      .cols-three .col2 { width: 66%; float: left}
+      .tlike { display: table }
+      .smallfont .remark-code { font-size: 0.92em }
+      .coltab { display : table-row }
+      .coltab .col20 { display : table-cell; width: 20% }
+      .coltab .col40 { display : table-cell; width: 40% }
+      .wd66 { width : 80% }
+      .large { font-size: 1.5em }
+    </style>
+  </head>
+  <body>
+    <textarea id="source">
+
+class: center, middle
+
+# Pyosmium
+
+## Fast processing of OpenStreetMap data
+
+<img src="pics/logo-pyosmium.svg" width="80">
+
+Sarah Hoffmann
+
+GeoPython 2017, Basel
+
+---
+
+# OpenStreetMap
+
+.center[<img src="pics/osmmain.png" width="800">]
+
+.center[Freely editable geo data]
+
+---
+
+# Osmium
+
+ - C++ library for reading and writing OSM data files
+
+ - collection of common functions for handling OSM data
+
+ - osmium-tool as command line tool for common tasks
+
+# Pyosmium
+
+ - python bindings for Osmium (based on python-boost)
+
+ - quick prototyping
+
+ - access to libraries like shapely, numpy, psycopg2, ...
+
+ - still a **low-level** library
+
+---
+
+class: center, middle
+
+## The Basics
+
+---
+
+# Pyosmium: Installation
+
+
+## .center[pip install osmium]
+
+### Linux, MacOS
+
+- needs: Boost Python, Expat, Zlib, Bzlib
+
+  ```
+  sudo apt-get install libboost-python-dev libexpat1-dev \
+                         zlib1g-dev libbz2-dev
+  ```
+
+### Windows
+
+- experimental wheels for Python 2.7 and 3.6 since version 2.12.2
+
+---
+
+# OSM: Basic Datatypes
+
+#### Node - a WSG84 coordinate
+
+.wd66[
+```xml
+<node id="2965" lat="51.513639" lon="-0.140043" .../>
+```
+]
+
+#### Way - an ordered list of nodes
+
+.wd66[
+```xml
+<way id="736446" ...>
+  <nd ref="822403"/>
+  <nd ref="21533912"/>
+  <nd ref="821601"/>
+</way>
+```
+]
+
+#### Relation - an ordered list of OSM objects with role
+
+.wd66[
+```xml
+<relation id="92738476" ...>
+  <member type="node" ref="137632221" role="label"/>
+  <member type="way" ref="54637238" role="outer"/>
+  <member type="relation" ref="5481" role="subarea"/>
+</relation>
+```
+]
+
+---
+
+# Example: Counting OSM objects
+
+```py
+import osmium
+
+class FileStatsHandler(osmium.SimpleHandler):
+
+    def __init__(self):
+        super(FileStatsHandler, self).__init__()
+        self.count = [0, 0, 0]
+
+    def node(self, n):
+        self.count[0] += 1
+
+    def way(self, w):
+        self.count[1] += 1
+
+    def relation(self, r):
+        self.count[2] += 1
+
+
+h = FileStatsHandler()
+h.apply_file("switzerland-latest.osm.pbf")
+
+print("Nodes: %d Ways: %d Relations: %d" % tuple(h.count))
+```
+
+---
+
+# Pyosmium: SimpleHandler
+
+#### Handler
+
+```py
+class Handler(osmium.SimpleHandler):
+
+    def __init__(self):
+        super(Handler, self).__init__()
+```
+
+- don't forget to call the derived constructor
+- OSM file types: xml.gz, xml.bz2, **pbf**, o5m
+
+#### Callbacks
+
+```py
+    def object(self, o):
+        ...
+```
+
+- available callback types: `node`, `way`, `relation`, `area`, `changeset`
+- object parameter in callback is immutable
+- object parameter is only valid in the scope of the callback!
+
+
+---
+
+class: center, middle
+
+## Attributes
+
+---
+
+# OSM Data Attributes
+
+- OSM: tags - key-value list of attributes
+
+  ```xml
+    <way id="2965" ...>
+      <tag k="highway" v="motorway"/>
+      <tag k="name" v="Ostseeautobahn" />
+      <tag k="ref" v="A2" />
+      <tag k="bridge" v="yes" />
+      ...
+    </node>
+  ```
+
+- Pyosmium: **`tags`** property
+
+  - dict-like immutable object
+
+  - use [] operator and get() function as accessor in the usual way
+
+  - bound to scope of object!
+
+---
+
+# Example: List of Most Common Street Names
+
+```py
+from collections import Counter
+
+class StreetNames(osmium.SimpleHandler):
+
+    def __init__(self):
+        super(StreetNames, self).__init__()
+        self.names = Counter()
+
+    def way(self, w):
+        if 'highway' in w.tags:
+            self.names[w.tags.get('name', '<unknown>')] += 1
+
+h = StreetNames()
+h.apply_file("switzerland.osm.pbf")
+
+for name,count in h.names.most_common(20):
+    print(count,name)
+```
+---
+# OSM: Tagging Rules
+
+.center[.large[There are no rules.]]
+
+- no naming rules, just conventions
+
+  Reference: [wiki.openstreetmap.org](https:\\wiki.openstreetmap.org)
+
+- relatively small list of 'primary keys':
+
+    `highway`, `amenity`, `building`, `railway`, `boundary`, `landuse`, `natural`, 
+    `tourism`, ...
+
+- other keys add additional information
+
+    `name`, `height`, `maxspeed`, `cusine`, `color`
+
+- cross-check for usage statistics
+
+  Overview: [taginfo.openstreetmap.org](https:\\taginfo.openstreetmap.org)
+
+.center[.large[Ignore what you don't know.]]
+
+---
+
+class: center, middle
+
+## Geometries
+
+---
+
+# Nodes
+
+- OSM: `lat`/`lon` attributes in WGS84
+
+```xml
+<node id="2965" lat="51.5173639" lon="-0.140043" ...>
+</node>
+```
+- Pyosmium: **`node.location`** property
+
+  - `lat`/`lon` - as float
+
+  - `x`/`y` - as fixed-point integer with 7 digits after decimal point
+
+  - bound to scope of object!
+
+---
+
+# Lines
+
+- OSM: ways only contain references to nodes
+```xml
+ <way id="736446" ...>
+    <nd ref="822403"/>
+    <nd ref="21533912"/>
+    <nd ref="821601"/>
+ </way>
+```
+
+- Pyosmium: **`way.nodes`** property
+
+  - list of `NodeRef` objects, contains
+
+      - `ref` - the node id
+
+      - `location` - the node coordinate (if available)
+
+  - bound to scope of object!
+
+- node locations must be cached and then added to way node reference list
+
+---
+
+# Example: Total Length of Motorways
+
+```py
+class RoadLengthHandler(osmium.SimpleHandler):
+
+    def __init__(self):
+        super(RoadLengthHandler, self).__init__()
+        self.length = 0.0
+
+    def way(self, w):
+        if w.tags.get('highway') == 'motorway':
+            try:
+                len = osmium.geom.haversine_distance(w.nodes)
+                if w.tags.get('oneway') != 'no':
+                    len /= 2
+                self.length += len
+            except osmium.InvalidLocationError:
+                print("WARNING: way %d incomplete." % w.id)
+
+h = RoadLengthHandler()
+#### Set 'locations' to true to get way coordinates. ####
+h.apply_file('switzerland.osm.pbf', locations=True)
+
+print('Total way length: %.2f km' % (h.length/1000))
+```
+
+---
+
+# Pyosmium: Choosing Location Caches
+
+```py
+handler.apply_file(filename, location=True, idx='sparse_mem_array')
+```
+
+* `sparse_mmem_array`/`sparse_mem_array`
+
+  (default) Implements a dictionary. Good for small to medium-size extracts.
+
+* `dense_mmem_array`/`dense_mem_array`
+
+  For full planets or large extracts (Europe++).
+
+* `dense_file_array,<filename>`
+
+  Persistent node storage.
+
+
+Dense storage needs **plenty of space** (rule of thumb: same as PBF planet size)
+
+More info: http://osmcode.org/osmium-concepts/#indexes
+
+---
+
+# OSM: Polygons
+
+### From Ways
+
+```py
+def way(self, w):
+    is_building_polygon = w.is_closed() and 'building' in w.tags
+```
+- closed *and* has polygon-like tag
+
+### From Relations
+
+```py
+def relation(self, r):
+    is_area = w.tags['type'] in ('multipolygon', 'boundary')
+```
+
+- type is boundary or multipolygon
+- (multi)polygon outline consists of all ways in the relation
+- OSM areas are not strictly OGC Simple Feature polygons
+
+---
+
+# Pyosmium: `area` callback
+
+- returns
+
+  - closed ways (recheck your tags!)
+  - multipolygon relations
+
+  **Valid** geometries only!
+
+- builds all polygon rings (OGC-compliant)
+
+- functions:
+    - `from_way()`/`orig_id()` - source OSM object
+    - `outer_rings()`/`inner_rings()` - lists of rings of the polygon
+
+
+- `area` callback automatically enables location cache
+
+- rings are bound to scope of area!
+
+---
+# Example: Compute Area Size
+
+```py
+class AreaHandler(osmium.SimpleHandler):
+
+    def signed_ring_area(self, ring):
+        total = 0.0
+        prev = None
+        for nref in ring:
+            if prev is not None:
+                total += prev[0] * nref.lat - prev[1] * nref.lon
+            prev = (nref.lon, nref.lat)
+
+        return total/2
+
+    def area(self, a):
+        for r in a.outer_rings():
+            area += self.signed_ring_area(r)
+
+            for i in a.inner_rings(r):
+                area += self.signed_ring_area(i)
+
+        print('W' if a.from_way() else 'R', a.orig_id(), area)
+```
+---
+
+class: middle, center
+
+# Interfacing with Geometry-processing Libraries
+
+---
+
+# Pyosmium: Geometry Factories
+
+- converters to well-known geometry formats
+
+  ```py
+  wkb_fab      = osmium.geom.WKBFactory()
+  wkt_fab      = osmium.geom.WKTFactory()
+  geosjosn_fab = osmium.geom.GeoJSONFactory()
+  ```
+
+- functions for all datatypes
+
+  ```py
+  point = wkb_fab.create_point(node)
+
+  line = wkb_fab.create_linestring(way)
+
+  polygon = wkb_fab.create_multipolygon(area)
+  ```
+
+---
+
+# Example: Interfacing with Geos
+
+```py
+import shapely.wkb
+
+wkbfab = osmium.geom.WKBFactory()
+
+class AreaHandler(osmium.SimpleHandler):
+
+    def area(self, a):
+        # create WKB from area
+        wkb = wkbfab.create_multipolygon(a)
+        # load into shapely
+        poly = shapely.wkb.loads(wkb, hex=True)
+
+        print('W' if a.from_way() else 'R', a.orig_id(),
+              poly.area)
+```
+
+---
+class: smallfont
+
+# Example: Shapefile conversion with Fiona
+
+```py
+import fiona
+import osmium
+
+drv = 'ESRI Shapefile'
+crs = {'no_defs': True, 'ellps': 'WGS84', 'datum': 'WGS84', 'proj': 'longlat'}
+schema = {'geometry': 'LineString',
+          'properties': {'id': 'float', 'name' : 'str', 'kind' : 'str'}}
+
+outfile = fiona.open('test.shp', 'w', driver=drv, crs=crs, schema=schema)
+
+
+geomfab = osmium.geom.GeoJSONFactory()
+
+class ShapeConverter(osmium.SimpleHandler):
+
+    def way(self, w):
+        if 'waterway' in w.tags:
+            rec = {'geometry' : eval(geomfab.create_linestring(w)),
+                   'properties' : {'id' : float(w.id),
+                                   'name' : w.tags.get('name'),
+                                   'kind' : w.tags['waterway']}}
+            outfile.write(rec)
+
+ShapeConverter().apply_file("switzerland.osm.pbf", locations=True)
+```
+
+---
+
+class: middle, center
+
+# Writing OSM files
+
+---
+
+# Example: Filter all highways
+
+```py
+writer = osmium.SimpleWriter("highways.osm.xml")
+
+class HighwayFilter(osmium.SimpleHandler):
+
+    def way(self, w):
+        if 'highway' in w.tags:
+            writer.add_way(w)
+
+
+HighwayFilter().apply_file("switzerland.osm.pbf")
+```
+
+---
+
+# Example: Filter all highways (2nd try)
+
+```py
+highway_nodes = set()
+
+class NodesCollect(osmium.SimpleHandler):
+    def way(self, w):
+        if 'highway' in w.tags:
+            highway_nodes.update([n.ref for n in w.nodes])
+
+NodesCollect.apply_file("switzerland.osm.pbf")
+
+writer = osmium.SimpleWriter("highways.osm.xml")
+
+class HighwayFilter(osmium.SimpleHandler):
+
+    def way(self, w):
+        if 'highway' in w.tags:
+            self.writer.add_way(w)
+
+    def node(self, n):
+        if node.id in highway_nodes:
+            writer.add_node(n)
+
+HighwayFilter.apply_file("switzerland.osm.pbf")
+```
+
+---
+
+# Example: Filter all highways (3rd try)
+
+```py
+highway_nodes = set()
+
+class NodesCollect(osmium.SimpleHandler):
+    def way(self, w):
+        if 'highway' in w.tags:
+            highway_nodes.update([n.ref for n in w.nodes])
+
+NodesCollect.apply_file("switzerland.osm.pbf")
+
+writer = osmium.SimpleWriter("highways.osm.xml")
+
+class HighwayFilter(osmium.SimpleHandler):
+
+    def way(self, w):
+        if 'highway' in w.tags:
+            self.writer.add_way(w)
+
+    def node(self, n):
+        if node.id in highway_nodes:
+            writer.add_node(n.replace(tags={}))
+
+HighwayFilter.apply_file("switzerland.osm.pbf")
+```
+
+---
+
+# Advanced Topics
+
+- converting your own data to OSM format
+
+- relation member handling
+
+- OSM data diff download and processing
+
+- OSM history files
+
+- OSM metadata
+
+# Future
+
+- extend support for Windows
+
+- special handlers (e.g. prefiltering)
+
+- advanced osmium functions (e.g. area builder)
+
+---
+
+class: middle, center
+
+# pip install osmium
+
+**Documentation**: http://docs.osmcode.org/pyosmium/latest/
+
+**Source code**: https://github.com/osmcode/pyosmium
+
+**Slides**: https://github.com/lonvia/geopython17-pyosmium
+
+**email**: `lonvia@denofr.de`
+
+
+    </textarea>
+    <script src="https://remarkjs.com/downloads/remark-latest.min.js">
+    </script>
+    <script>
+      var slideshow = remark.create();
+    </script>
+  </body>
+</html>
