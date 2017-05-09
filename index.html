@@ -345,31 +345,6 @@ print('Total way length: %.2f km' % (h.length/1000))
 
 ---
 
-# Pyosmium: Choosing Location Caches
-
-```py
-handler.apply_file(filename, location=True, idx='sparse_mem_array')
-```
-
-* `sparse_mmem_array`/`sparse_mem_array`
-
-  (default) Implements a dictionary. Good for small to medium-size extracts.
-
-* `dense_mmem_array`/`dense_mem_array`
-
-  For full planets or large extracts (Europe++).
-
-* `dense_file_array,<filename>`
-
-  Persistent node storage.
-
-
-Dense storage needs **plenty of space** (rule of thumb: same as PBF planet size)
-
-More info: http://osmcode.org/osmium-concepts/#indexes
-
----
-
 # OSM: Polygons
 
 ### From Ways
@@ -527,6 +502,26 @@ class: middle, center
 
 ---
 
+# Pyosmium: SimpleWriter
+
+```py
+osmium.SimpleWriter(<filename>)
+```
+
+- writes any OSM file format (according to suffix)
+
+```py
+ .add_node()
+ .add_way()
+ .add_relation()
+```
+
+- takes osmium objects
+
+- or Python objects with the same attributes
+
+---
+
 # Example: Filter all highways
 
 ```py
@@ -607,6 +602,8 @@ HighwayFilter.apply_file("switzerland.osm.pbf")
 - converting your own data to OSM format
 
 - relation member handling
+
+- location caches
 
 - OSM data diff download and processing
 
